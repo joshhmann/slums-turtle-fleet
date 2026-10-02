@@ -2,7 +2,7 @@
 -- No arbitrary code execution, ever: the network can only select from this
 -- table. Anything not here is refused with unsupported_action.
 
-local E = require("fleet.errors")
+local E = requireModule("errors")
 
 local verbs = {}
 

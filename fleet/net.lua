@@ -1,7 +1,7 @@
 -- fleet/net.lua — envelope encode/decode, version check, id minting, dedupe.
 -- Shared by turtle and controller so both sides agree on the wire format.
 
-local E = require("fleet.errors")
+local E = requireModule("errors")
 local net = {}
 
 net.VERSION = 1

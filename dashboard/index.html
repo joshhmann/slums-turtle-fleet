@@ -184,9 +184,15 @@ function renderFleet(data){
       }).join("") + "</table>";
 }
 
+// Telemetry lives on CT 108 (the bridge host). This dashboard runs on openclaw,
+// so it reads across the LAN. telemetry-view.service serves that one directory
+// read-only on 192.168.0.128:8773.
+const FLEET_URL  = "http://192.168.0.128:8773/telemetry/fleet.json";
+const EVENTS_URL = "http://192.168.0.128:8773/logs/events.jsonl";
+
 async function poll(){
   try{
-    const r = await fetch("telemetry/fleet.json?t=" + Date.now(), {cache:"no-store"});
+    const r = await fetch(FLEET_URL + "?t=" + Date.now(), {cache:"no-store"});
     if(!r.ok) throw new Error("HTTP " + r.status);
     renderFleet(await r.json());
   }catch(e){
@@ -194,7 +200,7 @@ async function poll(){
     document.getElementById("hdr-sub").textContent = "controller offline";
   }
   try{
-    const r = await fetch("logs/events.jsonl?t=" + Date.now(), {cache:"no-store"});
+    const r = await fetch(EVENTS_URL + "?t=" + Date.now(), {cache:"no-store"});
     if(r.ok){
       const txt = (await r.text()).trim();
       const lines = txt ? txt.split("\n").slice(-14).reverse() : [];

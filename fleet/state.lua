@@ -2,10 +2,10 @@
 -- Owns: how to execute, how to dig safely, fuel, inventory-full, recovery,
 --       reporting success/failure/status. Never: what work to do, or when.
 
-local config = require("fleet.config")
-local net    = require("fleet.net")
-local E      = require("fleet.errors")
-local verbs  = require("fleet.verbs")
+local config = requireModule("config")
+local net    = requireModule("net")
+local E      = requireModule("errors")
+local verbs  = requireModule("verbs")
 
 local state = {}
 

@@ -5,9 +5,9 @@
 -- A single loop CANNOT do both — a coroutine blocked in rednet.receive
 -- does not service websocket events (DESIGN §3.2).
 
-local config = require("fleet.config")
-local net    = require("fleet.net")
-local E      = require("fleet.errors")
+local config = requireModule("config")
+local net    = requireModule("net")
+local E      = requireModule("errors")
 
 local controller = {}
 
