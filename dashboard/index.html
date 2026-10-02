@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Slums Fleet — Control Center</title>
+<style>
+  :root {
+    --bg:#0d1117; --panel:#161b22; --line:#21262d; --text:#e6edf3;
+    --dim:#8b949e; --green:#3fb950; --amber:#d29922; --red:#f85149;
+    --blue:#58a6ff; --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  header { padding:18px 24px; border-bottom:1px solid var(--line);
+           display:flex; align-items:baseline; gap:16px; flex-wrap:wrap; }
+  h1 { font-size:18px; margin:0; font-weight:600; letter-spacing:.3px; }
+  h2 { font-size:13px; margin:0 0 10px; color:var(--dim);
+       text-transform:uppercase; letter-spacing:.8px; font-weight:600; }
+  .sub { color:var(--dim); font-size:12px; }
+  .dot { width:8px; height:8px; border-radius:50%; display:inline-block;
+         margin-right:6px; vertical-align:middle; }
+  .dot.ok { background:var(--green); } .dot.warn { background:var(--amber); }
+  .dot.bad { background:var(--red); } .dot.off { background:var(--dim); }
+  main { padding:24px; max-width:1400px; margin:0 auto; }
+  .grid { display:grid; gap:16px; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:8px;
+            padding:16px; }
+  section.wide { grid-column:1/-1; }
+  pre { font-family:var(--mono); font-size:12px; margin:0; white-space:pre-wrap;
+        word-break:break-word; color:var(--dim); }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { text-align:left; color:var(--dim); font-weight:600; font-size:11px;
+       text-transform:uppercase; letter-spacing:.6px; padding:6px 8px;
+       border-bottom:1px solid var(--line); }
+  td { padding:7px 8px; border-bottom:1px solid #1c2128; }
+  td.mono { font-family:var(--mono); font-size:12px; }
+  .bar { height:5px; background:#21262d; border-radius:3px; overflow:hidden;
+         margin-top:3px; min-width:60px; }
+  .bar > i { display:block; height:100%; background:var(--green); }
+  .bar.low > i { background:var(--amber); } .bar.crit > i { background:var(--red); }
+  .pill { display:inline-block; padding:1px 7px; border-radius:10px; font-size:11px;
+          border:1px solid var(--line); color:var(--dim); }
+  .pill.work { color:var(--blue); border-color:#1f4b7a; }
+  .pill.idle { color:var(--dim); }
+  .pill.down { color:var(--red); border-color:#6b2b2b; }
+  code { font-family:var(--mono); background:#21262d; padding:1px 5px;
+         border-radius:4px; font-size:12px; }
+  .arch { font-family:var(--mono); font-size:11.5px; line-height:1.65; color:var(--text); }
+  .phase { display:flex; gap:8px; align-items:center; padding:5px 0;
+           border-bottom:1px solid #1c2128; font-size:13px; }
+  .phase:last-child { border-bottom:none; }
+  .phase .n { font-family:var(--mono); color:var(--dim); width:16px; }
+  .phase.done .t { color:var(--dim); text-decoration:line-through; }
+  .phase.now .t { color:var(--green); font-weight:600; }
+  .empty { color:var(--dim); font-style:italic; padding:8px 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="dot off" id="hdr-dot"></span>Slums Fleet Control Center</h1>
+  <span class="sub" id="hdr-sub">connecting…</span>
+</header>
+
+<main>
+  <div class="grid">
+
+    <section>
+      <h2>Architecture</h2>
+      <div class="arch" id="arch"></div>
+    </section>
+
+    <section>
+      <h2>Connection</h2>
+      <table>
+        <tr><th>Bridge</th><td class="mono" id="c-bridge">—</td></tr>
+        <tr><th>Controller</th><td class="mono" id="c-ctrl">—</td></tr>
+        <tr><th>Uptime</th><td class="mono" id="c-up">—</td></tr>
+        <tr><th>Telemetry age</th><td class="mono" id="c-age">—</td></tr>
+      </table>
+    </section>
+
+    <section class="wide">
+      <h2>Fleet</h2>
+      <div id="fleet"><div class="empty">no telemetry yet</div></div>
+    </section>
+
+    <section>
+      <h2>Roadmap</h2>
+      <div id="roadmap"></div>
+    </section>
+
+    <section>
+      <h2>Event log</h2>
+      <pre id="logs">no events yet</pre>
+    </section>
+
+    <section class="wide">
+      <h2>Raw</h2>
+      <pre id="raw">(no telemetry file)</pre>
+    </section>
+
+  </div>
+</main>
+
+<script>
+const ARCH = `CT 108  dev-bridge :8765
+   |  WebSocket (token auth)
+   v
+CONTROLLER computer
+   |-- wired modem --> turtle A
+   |-- wired modem --> turtle B
+   v
+telemetry/fleet.json  ──>  this page`;
+
+const PHASES = [
+  ["0","Transport","done"],
+  ["1","One computer, one turtle, one job","now"],
+  ["2","Job board (queue.json, idempotent ids)","todo"],
+  ["3","Capability (weak_automata, geo_scanner)","todo"],
+  ["4","Force-load survival — the autonomy test","todo"],
+  ["5","Rookie dispatcher (replace dead turtles)","todo"],
+  ["6","In-world control center (DirectGPU)","todo"],
+  ["7","Logistics (turtles as haulers)","todo"],
+];
+
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function ago(epoch){
+  if(!epoch) return "—";
+  const d=Math.floor(Date.now()/1000-epoch);
+  if(d<0) return "in "+(-d)+"s";
+  if(d<60) return d+"s ago";
+  if(d<3600) return Math.floor(d/60)+"m ago";
+  if(d<86400) return Math.floor(d/3600)+"h ago";
+  return Math.floor(d/86400)+"d ago";
+}
+function dur(s){
+  if(s==null) return "—";
+  const h=Math.floor(s/3600), m=Math.floor((s%3600)/60);
+  return h? h+"h "+m+"m" : m+"m";
+}
+
+document.getElementById("arch").textContent = ARCH;
+document.getElementById("roadmap").innerHTML = PHASES.map(([n,t,st])=>
+  `<div class="phase ${st}"><span class="n">${n}</span><span class="dot ${st==="done"?"ok":st==="now"?"warn":"off"}"></span><span class="t">${esc(t)}</span></div>`
+).join("");
+
+function renderFleet(data){
+  const ts=data.turtles||[];
+  document.getElementById("c-ctrl").textContent = data.controller?.id || "—";
+  document.getElementById("c-bridge").textContent = data.controller?.bridge || "—";
+  document.getElementById("c-up").textContent = dur(data.controller?.uptime_s);
+  document.getElementById("c-age").textContent = ago(data.updated_epoch);
+
+  const dot=document.getElementById("hdr-dot");
+  const fresh = data.updated_epoch && (Date.now()/1000 - data.updated_epoch) < 90;
+  dot.className = "dot " + (fresh?"ok":data.updated_epoch?"warn":"off");
+  document.getElementById("hdr-sub").textContent =
+    fresh ? "live" : data.updated_epoch ? "stale" : "no telemetry";
+
+  document.getElementById("raw").textContent = JSON.stringify(data,null,2);
+
+  const f=document.getElementById("fleet");
+  if(!ts.length){ f.innerHTML='<div class="empty">no turtles reporting</div>'; return; }
+  f.innerHTML = "<table><tr><th>ID</th><th>Status</th><th>Job</th><th>Pos</th>"
+    + "<th>Fuel</th><th>Inv</th><th>Seen</th></tr>"
+    + ts.map(t=>{
+        const st=t.status||"unknown";
+        const cls=st==="working"?"work":st==="offline"?"down":"idle";
+        const fu=t.fuel||{};
+        const pct = fu.max ? Math.round(100*fu.current/fu.max) : 0;
+        const bc = pct<15?"crit":pct<35?"low":"";
+        const p=t.pos||{};
+        return `<tr><td class="mono">${esc(t.id)}</td>`
+          +`<td><span class="pill ${cls}">${esc(st)}</span></td>`
+          +`<td class="mono">${esc(t.job||"—")}</td>`
+          +`<td class="mono">${p.x==null?"—":p.x+","+p.y+","+p.z}`
+          +` <span class="pill">${esc(p.source||"?")}</span></td>`
+          +`<td class="mono">${fu.current??"—"}${fu.max?"/"+fu.max:""}`
+          +`<div class="bar ${bc}"><i style="width:${pct}%"></i></div></td>`
+          +`<td class="mono">${t.inventory? t.inventory.used_slots+"/16":"—"}</td>`
+          +`<td class="mono">${ago(t.last_seen_epoch)}</td></tr>`;
+      }).join("") + "</table>";
+}
+
+async function poll(){
+  try{
+    const r = await fetch("telemetry/fleet.json?t=" + Date.now(), {cache:"no-store"});
+    if(!r.ok) throw new Error("HTTP " + r.status);
+    renderFleet(await r.json());
+  }catch(e){
+    document.getElementById("hdr-dot").className="dot bad";
+    document.getElementById("hdr-sub").textContent = "controller offline";
+  }
+  try{
+    const r = await fetch("logs/events.jsonl?t=" + Date.now(), {cache:"no-store"});
+    if(r.ok){
+      const txt = (await r.text()).trim();
+      const lines = txt ? txt.split("\n").slice(-14).reverse() : [];
+      document.getElementById("logs").textContent =
+        lines.length ? lines.join("\n") : "no events yet";
+    }
+  }catch(e){ /* log missing is normal */ }
+}
+
+poll();
+setInterval(poll, 5000);
+</script>
+</body>
+</html>

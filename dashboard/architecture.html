@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Slums Fleet — Architecture</title>
+<style>
+  :root{--bg:#0d1117;--panel:#161b22;--line:#21262d;--text:#e6edf3;--dim:#8b949e;
+        --green:#3fb950;--amber:#d29922;--red:#f85149;--blue:#58a6ff;
+        --mono:ui-monospace,SFMono-Regular,Menlo,monospace;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font:15px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;padding:40px 24px}
+  .wrap{max-width:960px;margin:0 auto}
+  h1{font-size:24px;margin:0 0 6px;letter-spacing:-.2px}
+  h2{font-size:15px;margin:36px 0 12px;color:var(--blue);
+     text-transform:uppercase;letter-spacing:1px;font-weight:600}
+  h3{font-size:14px;margin:22px 0 8px;color:var(--text)}
+  p{margin:10px 0}
+  .lede{color:var(--dim);margin-bottom:8px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+          padding:20px 22px;margin-bottom:16px}
+  pre{background:#0b0f14;border:1px solid var(--line);border-radius:8px;
+      padding:16px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;
+      line-height:1.6;margin:0}
+  code{font-family:var(--mono);background:#21262d;padding:1px 6px;border-radius:4px;font-size:13px}
+  pre code{background:none;padding:0}
+  table{width:100%;border-collapse:collapse;font-size:14px;margin:12px 0}
+  th{text-align:left;color:var(--dim);font-size:11px;text-transform:uppercase;
+     letter-spacing:.7px;padding:8px 10px;border-bottom:1px solid var(--line)}
+  td{padding:9px 10px;border-bottom:1px solid #1c2128;vertical-align:top}
+  .tag{display:inline-block;padding:1px 8px;border-radius:10px;font-size:11.5px;
+       border:1px solid var(--line);color:var(--dim);margin-right:6px}
+  .tag.ok{color:var(--green);border-color:#1f5c2e}
+  .tag.no{color:var(--amber);border-color:#5c4a1f}
+  .tag.risk{color:var(--red);border-color:#6b2b2b}
+  ol,ul{margin:10px 0;padding-left:22px} li{margin:6px 0}
+  .foot{color:var(--dim);font-size:13px;text-align:center;margin-top:32px}
+  a{color:var(--blue)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Slums MC — Autonomous Turtle Fleet</h1>
+  <p class="lede">Architecture overview and first steps. Josh's private server,
+  CC:Tweaked 1.120.2 on NeoForge 1.21.1, 303 mods.</p>
+
+  <section>
+    <h2>What we're building</h2>
+    <p>A fleet of turtles that report for duty, survive unattended operation
+    across days, and can be supervised from a control center inside the world —
+    with most supervision automatable from outside it.</p>
+    <p><b>What we're deliberately not building:</b> total self-sufficiency with
+    nobody in the world. Turtles halt on chunk unload, <code>max_websockets</code>
+    is 4, and AdvancedPeripherals is alpha. High autonomy, not total.</p>
+  </section>
+
+  <section>
+    <h2>Architecture</h2>
+<pre><code>┌──────────────────────────────────────────────────────────┐
+│ CT 108  (192.168.0.128)                                  │
+│                                                          │
+│   dev-bridge  Python  ·  :8765                          │
+│     · token auth on first message                        │
+│     · file-backed, watches + pushes on change            │
+│                                                          │
+│   [optional] dashboard  ← exposure deferred              │
+└──────────────▲───────────────────────────────────────────┘
+               │ WebSocket
+               │  (CC http.rules must allow, ABOVE $private deny)
+┌──────────────┴───────────────────────────────────────────┐
+│ IN-WORLD                                                  │
+│                                                          │
+│   CONTROLLER computer                                    │
+│     · fleet state · job queue · odometry · dispatcher    │
+│     · ONE websocket, async, never blocking               │
+│                                                          │
+│     ├── wired modem ──▶ turtle A                         │
+│     └── wired modem ──▶ turtle B                         │
+│                                                          │
+│   CONTROL CENTER                                         │
+│     · DirectGPU terminal   fleet status + job board      │
+│     · Spatial Projector    cosmetic wall display         │
+│     · CC: Terminals        outposts, no computer needed  │
+└──────────────────────────────────────────────────────────┘</code></pre>
+  </section>
+
+  <section>
+    <h2>Why this shape</h2>
+    <table>
+      <tr><th>Decision</th><th>Reason</th></tr>
+      <tr><td><b>Wired modems</b></td>
+          <td>Vanilla CC wired networks have <b>no length cap</b> and turtles can
+          use them. Wireless caps at 64 blocks and degrades in thunderstorms.
+          No extra mod needed.</td></tr>
+      <tr><td><b>In-world control center first</b></td>
+          <td>DirectGPU works with zero network. That removes the
+          tailnet-vs-LAN decision from the critical path entirely.</td></tr>
+      <tr><td><b>Dumb, expendable turtles</b></td>
+          <td>AP has no pathfinding and <code>chunkAnalyze</code> returns counts
+          without coordinates. So the controller owns the map and turtles just
+          sense and execute. That also makes replacement-on-death correct.</td></tr>
+      <tr><td><b>Idempotent job ids</b></td>
+          <td>A retry must <b>replay</b>, never re-execute. Otherwise a network
+          blip makes a turtle dig the same tunnel twice.</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>Current state</h2>
+    <table>
+      <tr><th>Item</th><th>Status</th></tr>
+      <tr><td>CC → bridge WebSocket</td>
+          <td><span class="tag ok">VERIFIED</span> real in-game computer connected;
+          register returned the correct auth error</td></tr>
+      <tr><td>CC http.rules</td>
+          <td><span class="tag ok">FIXED</span> patched in the <b>server pack</b>,
+          not just live — the config is re-extracted on every boot</td></tr>
+      <tr><td>FTB idle-unforce</td>
+          <td><span class="tag ok">FIXED</span> 1.0d → 0.0d; without this the fleet
+          halts every 24h when nobody logs in</td></tr>
+      <tr><td>Fleet code</td>
+          <td><span class="tag ok">70/70</span> checks pass under lua5.1</td></tr>
+      <tr><td>One turtle running</td>
+          <td><span class="tag no">PENDING</span> needs Josh in-world</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>Phases</h2>
+    <p>Each phase ends in something observable. Nothing assumes a later phase worked.</p>
+    <ol>
+      <li><b>Transport</b> — <span class="tag ok">DONE</span></li>
+      <li><b>One computer, one turtle, one job</b> — <span class="tag no">NEXT</span>
+          heartbeat visible, one move command executes, socket closed cleanly</li>
+      <li><b>Job board</b> — <code>queue.json</code> round-trip, idempotent ids
+          proven by a deliberate duplicate submit</li>
+      <li><b>Capability</b> — <code>weak_automata</code> dig,
+          <code>geo_scanner</code> census, Radio GPS verified for position</li>
+      <li><b>Force-load survival</b> — <span class="tag risk">the autonomy test</span>
+          a turtle works a chunk outside view and does not halt</li>
+      <li><b>Rookie dispatcher</b> — death → replacement,
+          <code>end_automata</code> recall for refuel</li>
+      <li><b>Control center</b> — DirectGPU + Spatial Projector read
+          <code>telemetry/fleet.json</code></li>
+      <li><b>Logistics</b> — <code>me_bridge</code>/<code>rs_bridge</code> transfer,
+          turtles as haulers into Create pipes</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>First steps — in the world</h2>
+    <h3>1. Confirm the computer</h3>
+    <p>Which computer ID you're at. Computer <code>5</code> was empty;
+    <code>4</code> holds the earlier rednet console.</p>
+
+    <h3>2. Install the fleet modules</h3>
+    <p>One file at a time, each paste self-contained. Start the file, paste the
+    body, finish with a blank line:</p>
+<pre><code>shell.run("cat &gt; /fleet/errors.lua")</code></pre>
+
+    <h3>3. Configure the controller</h3>
+    <p>In <code>/fleet/config.lua</code>: <code>MODE = "controller"</code>,
+    <code>BRIDGE_ENABLED = true</code>. Bridge token goes in
+    <code>/bridge-token.txt</code> — never typed into Lua.</p>
+
+    <h3>4. Prove the heartbeat</h3>
+    <p>Computer alone, no turtle. A heartbeat in
+    <code>telemetry/fleet.json</code> is the whole goal. That path already worked
+    once, so it should be quick.</p>
+  </section>
+
+  <section>
+    <h2>Things that will bite</h2>
+    <table>
+      <tr><th>Trap</th><th>What happens</th></tr>
+      <tr><td><span class="tag risk">silent</span></td>
+          <td>A turtle one chunk outside the force-loaded set <b>halts with no
+          error</b>. Check this first when a turtle goes quiet.</td></tr>
+      <tr><td><span class="tag no">slots</span></td>
+          <td><code>max_websockets=4</code> is global. An abandoned socket consumes
+          one until the peer restarts.</td></tr>
+      <tr><td><span class="tag no">scope</span></td>
+          <td>CC shell: each line is a separate program. <code>local</code> does
+          not survive between lines.</td></tr>
+      <tr><td><span class="tag no">blocking</span></td>
+          <td><code>ws.receive()</code> blocks the coroutine and the computer looks
+          frozen. Timeouts are milliseconds.</td></tr>
+      <tr><td><span class="tag risk">decoy</span></td>
+          <td><code>cc-cbc</code> is Create Big Cannons compat, <b>not a cable
+          mod</b>. <code>cc_sable</code> is physics compat.</td></tr>
+    </table>
+  </section>
+
+  <p class="foot">Evidence-labelled in <code>SPEC.md</code> ·
+  code at <code>joshhmann/slums-turtle-fleet</code> (private)</p>
+
+</div>
+</body>
+</html>
